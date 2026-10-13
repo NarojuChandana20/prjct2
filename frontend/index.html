@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Safety Monitoring System | AI Video Analysis Dashboard</title>
+  <meta name="description" content="Multi-Branch AI System for Student Safety, Behaviour Inference, and Facial Emotion Analysis.">
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Dashboard Styling -->
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- ======================================================================
+         Header & Navigation
+         ====================================================================== -->
+    <header class="header-glass">
+      <div class="brand-wrapper">
+        <div class="brand-icon">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </div>
+        <div class="brand-title-group">
+          <h1>
+            Student Safety Monitoring System
+            <span class="brand-badge">Stage 9C</span>
+          </h1>
+          <p class="brand-subtitle">Unified Multi-Branch Video Pipeline & Real-Time Behaviour Telemetry</p>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="status-pill" id="systemHealthBadge">
+          <span class="pulse-dot"></span> 5 Models Online
+        </div>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+         Hero Architecture Stats Bar
+         ====================================================================== -->
+    <section class="hero-stats-grid">
+      <div class="stat-card" style="--card-accent: var(--accent-primary);">
+        <div class="stat-label">Person Tracking</div>
+        <div class="stat-val-row">
+          <div class="stat-value" id="statPersistentTracks">—</div>
+          <span class="badge-status-pill" id="statInFrameCountPill" style="display:none; background: rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.72rem; padding: 2px 7px;">0 in Frame</span>
+        </div>
+        <div class="stat-subtext" id="statTrackingSubtitle">Active Persistent Tracks (YOLO11)</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-emerald);">
+        <div class="stat-label">Body Behaviour</div>
+        <div class="stat-val-row">
+          <div class="stat-value" id="statBehaviourPreds">—</div>
+        </div>
+        <div class="stat-subtext">BiLSTM Sequence Predictions</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-cyan);">
+        <div class="stat-label">Facial Emotions</div>
+        <div class="stat-val-row">
+          <div class="stat-value" id="statEmotionPreds">—</div>
+        </div>
+        <div class="stat-subtext">Associated Face Inferences</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-amber);">
+        <div class="stat-label">Inference Throughput</div>
+        <div class="stat-val-row">
+          <div class="stat-value" id="statProcessingSpeed">—</div>
+        </div>
+        <div class="stat-subtext">Frames Per Second</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-rose);">
+        <div class="stat-label">Security Incidents</div>
+        <div class="stat-val-row">
+          <div class="stat-value" id="statIncidentsCount">0</div>
+          <span class="badge-pending-count" id="statPendingCountPill">0 Pending</span>
+        </div>
+        <div class="stat-subtext">High-Risk Events (Stage 9C)</div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         Main Work Area: Upload Panel (Left) & Dual Video Player (Right)
+         ====================================================================== -->
+    <div class="dashboard-grid">
+      
+      <!-- Left Column: Video Selection & Control -->
+      <section class="dashboard-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-title-icon">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+            </div>
+            <h2 class="card-title">Video Ingestion</h2>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Dropzone -->
+          <div class="dropzone-container" id="videoDropzone">
+            <input type="file" id="videoFileInput" accept=".mp4,.avi,.mov,.mkv,.webm" style="display: none;">
+            <div class="dropzone-icon">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div class="dropzone-title">Click or Drag & Drop Video File</div>
+            <div class="dropzone-subtitle">Supported formats for AI multi-branch analysis</div>
+            <div class="format-pills">
+              <span class="format-pill">MP4</span>
+              <span class="format-pill">AVI</span>
+              <span class="format-pill">MOV</span>
+              <span class="format-pill">MKV</span>
+            </div>
+          </div>
+
+          <!-- Selected File Details Pill -->
+          <div class="selected-file-info" id="selectedFileInfo">
+            <div class="file-meta-col">
+              <div class="file-icon">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <div class="file-details">
+                <div class="file-name" id="selectedFileName">video.mp4</div>
+                <div class="file-specs" id="selectedFileSpecs">0.0 MB</div>
+              </div>
+            </div>
+            <button class="btn-remove-file" id="btnRemoveFile" title="Remove selected video">✕</button>
+          </div>
+
+          <!-- 1-Click Test Samples -->
+          <div class="samples-section">
+            <div class="section-subheading">
+              <span>Quick Test Samples</span>
+              <span style="font-size:0.7rem;color:var(--text-muted);">From tests/assets</span>
+            </div>
+            <div class="sample-buttons-list" id="sampleButtonsList">
+              <!-- Populated dynamically via JS -->
+            </div>
+          </div>
+
+          <!-- Max Frames Selector -->
+          <div class="option-row">
+            <label class="option-label" for="selectMaxFrames">Analysis Frame Limit</label>
+            <select class="option-select" id="selectMaxFrames">
+              <option value="" selected>Full Video (Entire Duration - All Frames)</option>
+              <option value="35">35 Frames (Fast Test Sample - ~1s)</option>
+              <option value="60">60 Frames (Short Test Sample - ~2s)</option>
+              <option value="120">120 Frames (Medium Test Sample - ~4s)</option>
+            </select>
+          </div>
+
+          <!-- Analyze Action Button -->
+          <button class="btn-primary" id="btnAnalyze" disabled>
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Start Video Analysis
+          </button>
+
+          <!-- Loading Progress Panel -->
+          <div class="processing-panel" id="processingPanel">
+            <div class="progress-header">
+              <span class="progress-status-text" id="progressStatusText">Running multi-branch pipeline...</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill"></div>
+            </div>
+          </div>
+
+          <!-- Error Alert Banner -->
+          <div class="error-banner" id="errorBanner">
+            <div id="errorMessage">An error occurred during analysis.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Dual Video Player (Original & AI Annotated) -->
+      <section class="dashboard-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-title-icon">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h2 class="card-title">Video Playback & AI Visual Overlay</h2>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="video-comparison-grid">
+            <!-- Left Box: Original Video -->
+            <div class="video-frame-box">
+              <div class="video-box-header">
+                <span>Input Video Preview</span>
+                <span class="video-tag raw">Raw Input</span>
+              </div>
+              <div class="video-element-wrapper">
+                <video id="videoPlayerInput" controls preload="auto" style="display: none;"></video>
+                <div class="video-placeholder" id="inputPlaceholder">
+                  <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>Select or upload a video to preview</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Box: AI Annotated Output Video -->
+            <div class="video-frame-box">
+              <div class="video-box-header">
+                <span>AI Annotated Output</span>
+                <span class="video-tag annotated">Multi-Branch Telemetry</span>
+              </div>
+              <div class="video-element-wrapper">
+                <video id="videoPlayerAnnotated" controls preload="auto" style="display: none;"></video>
+                <div class="video-placeholder" id="annotatedPlaceholder">
+                  <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                  </svg>
+                  <span>Annotated video with bounding boxes & telemetry will appear here</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ======================================================================
+         AI Analysis Results: Tracked People Telemetry
+         ====================================================================== -->
+    <section class="dashboard-card" style="margin-bottom: 28px;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+          </div>
+          <h2 class="card-title">Tracked Individuals Telemetry</h2>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Live Scrubber & Telemetry Toolbar -->
+        <div class="tracking-toolbar" id="trackingToolbar" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 10px 14px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 0.82rem; flex-wrap: wrap;">
+            <span style="color: var(--text-secondary);">Live Scrubber: <strong id="liveScrubberFrame" style="color: var(--accent-cyan);">Frame —</strong></span>
+            <span style="color: var(--border-subtle);">|</span>
+            <span style="color: var(--text-secondary);">Currently in Frame: <strong id="liveFramePeopleCount" style="color: #60a5fa;">0 detected</strong></span>
+            <span style="color: var(--border-subtle);">|</span>
+            <span style="color: var(--text-secondary);">Active Persistent Tracks: <strong id="metricActiveTracks" style="color: #34d399;">0</strong></span>
+            <span style="color: var(--border-subtle);">|</span>
+            <span style="color: var(--text-secondary);">Total Track Sessions: <strong id="totalTrackSessionsCount" style="color: var(--text-primary);">0</strong></span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="filter-chip active" id="filterTracksAll">All Tracks</button>
+            <button class="filter-chip" id="filterTracksRisk">High Risk Only</button>
+          </div>
+        </div>
+
+        <div id="emptyResultsPlaceholder" style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
+          Run video analysis to inspect tracked students, body behaviour classes, and facial emotions.
+        </div>
+
+        <div class="tracked-persons-grid" id="trackedPersonsGrid">
+          <!-- Populated dynamically via JS with real backend results -->
+        </div>
+
+        <!-- Class Distributions Grid -->
+        <div class="stats-breakdown-grid" id="statsBreakdownGrid" style="display: none;">
+          <div class="breakdown-card">
+            <div class="breakdown-card-title">
+              <span>Body Behaviour Distribution</span>
+            </div>
+            <div class="distribution-list" id="behaviourDistList"></div>
+          </div>
+
+          <div class="breakdown-card">
+            <div class="breakdown-card-title">
+              <span>Facial Emotion Distribution</span>
+            </div>
+            <div class="distribution-list" id="emotionDistList"></div>
+          </div>
+
+          <div class="breakdown-card">
+            <div class="breakdown-card-title">
+              <span>Pipeline Architecture</span>
+            </div>
+            <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.6;">
+              <p>• <strong>Branch 1 (Body):</strong> YOLO11 Person Tracker → MediaPipe Pose Landmarker → 165 Features → BiLSTM Sequence Classifier.</p>
+              <p style="margin-top:6px;">• <strong>Branch 2 (Emotion):</strong> MediaPipe Face Detector → EfficientNetB0 (7 RAF-DB classes).</p>
+              <p style="margin-top:6px;">• <strong>Branch 3 (Spatial Match):</strong> Head-zone geometric association (top 40% person bbox) with 1-to-1 matching and ambiguity rejection.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         Stage 9C: Incident Management and Review System
+         ====================================================================== -->
+    <section class="dashboard-card incident-card" id="incidentManagementSection" style="margin-bottom: 28px;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title-icon" style="background: rgba(244, 63, 94, 0.15); color: var(--accent-rose);">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="card-title">Security Incident Management & Review Log <span class="brand-badge" style="background: rgba(244, 63, 94, 0.2); color: #fda4af;">Stage 9C</span></h2>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+              Automated high-risk body event detection log with per-track deduplication and human audit review.
+            </p>
+          </div>
+        </div>
+        <div class="incident-header-actions">
+          <button class="btn-refresh-incidents" id="btnRefreshIncidents" title="Refresh Incident Log">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Incident Scope Switcher Bar -->
+        <div class="incident-scope-bar" style="display: flex; gap: 10px; margin-bottom: 14px; align-items: center; flex-wrap: wrap;">
+          <button class="scope-btn active" id="btnScopeCurrentVideo" style="padding: 6px 14px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; border: 1px solid var(--accent-rose); background: rgba(244, 63, 94, 0.15); color: #fda4af; cursor: pointer;">
+            ● Current Video (<span id="countCurrentVideoIncidents">0</span>)
+          </button>
+          <button class="scope-btn" id="btnScopeHistorical" style="padding: 6px 14px; font-size: 0.8rem; font-weight: 500; border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-secondary); cursor: pointer;">
+            📁 All Historical Archive (<span id="countAllHistoricalIncidents">0</span>)
+          </button>
+          <span style="margin-left: auto; font-size: 0.74rem; color: var(--text-muted);" id="incidentScopeNotice">Showing incidents for active video</span>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div class="incident-toolbar">
+          <div class="toolbar-group">
+            <label for="filterIncidentStatus">Review Status:</label>
+            <select id="filterIncidentStatus" class="select-incident-filter">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending Review</option>
+              <option value="reviewed">Reviewed (Confirmed)</option>
+              <option value="dismissed">Dismissed (False Alarm)</option>
+            </select>
+          </div>
+
+          <div class="toolbar-group">
+            <label for="filterIncidentBehaviour">Behaviour:</label>
+            <select id="filterIncidentBehaviour" class="select-incident-filter">
+              <option value="">All Behaviours</option>
+              <option value="Fight">Fight (Physical Altercation)</option>
+              <option value="Fall">Fall (Emergency Collapse)</option>
+            </select>
+          </div>
+
+          <div class="toolbar-group toolbar-search">
+            <input type="text" id="inputIncidentSearch" placeholder="Filter by Track ID or Video ID..." class="input-incident-search">
+          </div>
+        </div>
+
+        <!-- Incidents List / Table Container -->
+        <div class="incidents-table-wrapper">
+          <table class="incidents-table" id="incidentsTable">
+            <thead>
+              <tr>
+                <th>Incident ID</th>
+                <th>Time / Source</th>
+                <th>Behaviour Event</th>
+                <th>Track Identifier</th>
+                <th>Facial Emotion</th>
+                <th>Evidence Frame</th>
+                <th>Review Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="incidentsTableBody">
+              <!-- Rendered dynamically via JS -->
+            </tbody>
+          </table>
+          <div class="incidents-empty-placeholder" id="incidentsEmptyPlaceholder">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p>No incidents recorded yet.</p>
+            <span class="subtext">Incidents trigger automatically when body behaviour reports a verified High Risk prediction (Fight or Fall).</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         Incident Review & Audit Modal
+         ====================================================================== -->
+    <div class="modal-backdrop" id="incidentReviewModal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-title" id="modalIncidentTitle">Review Incident: inc_xxx</h3>
+            <span class="modal-subtitle" id="modalIncidentSubtitle">Event detected from Body Behaviour Branch</span>
+          </div>
+          <button class="modal-close-btn" id="modalCloseBtn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Advisory Banner -->
+          <div class="modal-advisory-banner">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <strong>Auditor Advisory:</strong> Model predictions are assistive statistical observations and do not establish guilt, intent, or real-world identity. A qualified human reviewer must assess the incident context.
+            </div>
+          </div>
+
+          <div class="modal-grid">
+            <!-- Left: Evidence Image Preview -->
+            <div class="modal-evidence-panel">
+              <div class="evidence-preview-wrapper" id="modalEvidenceWrapper">
+                <img id="modalEvidenceImg" src="" alt="Evidence Frame Screenshot" style="display: none;">
+                <div class="evidence-placeholder-box" id="modalEvidencePlaceholder">
+                  <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  <span>No screenshot captured for this frame</span>
+                </div>
+              </div>
+              <div class="evidence-caption" id="modalEvidenceCaption">Annotated Frame Capture (Click image to zoom)</div>
+            </div>
+
+            <!-- Right: Event Meta & Audit Controls -->
+            <div class="modal-audit-panel">
+              <div class="modal-meta-grid">
+                <div class="meta-item">
+                  <span class="meta-label">Behaviour Event</span>
+                  <span class="meta-val" id="modalMetaBehaviour">—</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Model Confidence</span>
+                  <span class="meta-val" id="modalMetaConfidence">—</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Track Token</span>
+                  <span class="meta-val" id="modalMetaTrackId">—</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Event Time (Span)</span>
+                  <span class="meta-val" id="modalMetaTimeSpan">—</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Facial Emotion (Decoupled)</span>
+                  <span class="meta-val" id="modalMetaEmotion">—</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Video Source</span>
+                  <span class="meta-val" id="modalMetaSource">—</span>
+                </div>
+              </div>
+
+              <!-- Form for Reviewer Audit -->
+              <form id="incidentReviewForm" class="modal-review-form">
+                <div class="form-group">
+                  <label class="form-label">Review Audit Status:</label>
+                  <div class="status-radio-group">
+                    <label class="radio-chip reviewed">
+                      <input type="radio" name="reviewStatusRadio" value="reviewed" checked>
+                      <span>Reviewed (Confirmed)</span>
+                    </label>
+                    <label class="radio-chip dismissed">
+                      <input type="radio" name="reviewStatusRadio" value="dismissed">
+                      <span>Dismissed (False Alarm)</span>
+                    </label>
+                    <label class="radio-chip pending">
+                      <input type="radio" name="reviewStatusRadio" value="pending">
+                      <span>Pending (Needs Info)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="inputReviewerName" class="form-label">Reviewer Name / ID:</label>
+                  <input type="text" id="inputReviewerName" class="modal-input" placeholder="e.g. Officer Johnson (Safety Lead)" value="Authorized Reviewer" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="textareaReviewerNotes" class="form-label">Reviewer Audit Notes & Action Log:</label>
+                  <textarea id="textareaReviewerNotes" class="modal-textarea" rows="4" placeholder="Document contextual evaluation, actions dispatched, or rationale for dismissal..."></textarea>
+                </div>
+
+                <div class="modal-form-actions">
+                  <button type="button" class="btn-modal-cancel" id="btnModalCancel">Cancel</button>
+                  <button type="submit" class="btn-modal-save" id="btnModalSave">Save Audit Decision</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+         Verified Person Linkage Modal (Authorized Auditor Review)
+         ====================================================================== -->
+    <div class="modal-backdrop" id="linkPersonModal" style="display: none; z-index: 220;">
+      <div class="modal-card" style="max-width: 500px;">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-title" id="linkModalTitle">Link Track to Verified Person</h3>
+            <p class="modal-subtitle">Authorized identity linkage (Strictly manual review — no automated face matching)</p>
+          </div>
+          <button class="modal-close-btn" id="linkModalCloseBtn">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+          <form id="linkPersonForm">
+            <div class="form-group">
+              <label class="form-label">Temporary Track Token:</label>
+              <input type="text" id="linkTrackTokenDisplay" class="modal-input" readonly style="background: rgba(0,0,0,0.3); font-weight:600;">
+            </div>
+            <div class="form-group">
+              <label for="selectVerifiedPerson" class="form-label">Select Registered Person:</label>
+              <select id="selectVerifiedPerson" class="modal-input" required>
+                <option value="">-- Choose registered student/staff --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="inputLinkReviewer" class="form-label">Reviewer Name / ID:</label>
+              <input type="text" id="inputLinkReviewer" class="modal-input" value="Authorized Auditor" required>
+            </div>
+            <div class="form-group">
+              <label for="textareaLinkNotes" class="form-label">Audit Verification Rationale:</label>
+              <textarea id="textareaLinkNotes" class="modal-textarea" rows="2" placeholder="Document verified badge, uniform, or physical visual confirmation..."></textarea>
+            </div>
+            <div class="modal-form-actions">
+              <button type="button" class="btn-modal-cancel" id="btnLinkCancel">Cancel</button>
+              <button type="submit" class="btn-modal-save" id="btnLinkSave">Save Linkage</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+         Evidence Zoom Modal
+         ====================================================================== -->
+    <div class="modal-backdrop" id="evidenceZoomModal" style="display: none; z-index: 250;">
+      <div class="modal-card zoom-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Evidence Frame Inspection</h3>
+          <button class="modal-close-btn" id="zoomModalCloseBtn">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 16px; text-align: center;">
+          <img id="zoomModalImg" src="" alt="Full-size Evidence Frame" style="max-width: 100%; max-height: 80vh; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ======================================================================
+         Strict Safety & Ethics Disclaimer
+         ====================================================================== -->
+    <div class="disclaimer-banner">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div>
+        <strong>System Integrity & Privacy Policy:</strong> Body behaviour inference and facial emotion recognition operate as independent perceptual branches. Model outputs reflect statistical confidence scores on the trained classes and are not combined into medical diagnoses, dangerousness scores, or unvalidated composite metrics. No facial recognition or real-world identification is performed; tracking IDs represent temporary track sessions within the processed video stream.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Dashboard JavaScript -->
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
