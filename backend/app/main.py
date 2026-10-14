@@ -24,11 +24,14 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+import threading
+import base64
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure UTF-8 terminal encoding on Windows
@@ -75,6 +78,41 @@ def get_pipeline() -> VideoBehaviourPipeline:
         _pipeline_instance = VideoBehaviourPipeline()
         print("[API] Pipeline singleton ready.")
     return _pipeline_instance
+
+
+# ==============================================================================
+# Live Webcam Session State & Dedicated Pipeline (Isolated from video analysis)
+# ==============================================================================
+_webcam_pipeline_instance: Optional[VideoBehaviourPipeline] = None
+_webcam_pipeline_lock = threading.Lock()
+
+
+def get_webcam_pipeline() -> VideoBehaviourPipeline:
+    """Returns a dedicated webcam pipeline instance, separate from the video analysis pipeline."""
+    global _webcam_pipeline_instance
+    if _webcam_pipeline_instance is None:
+        print("[API] Initializing dedicated Webcam Pipeline instance...")
+        _webcam_pipeline_instance = VideoBehaviourPipeline()
+        print("[API] Webcam Pipeline ready.")
+    return _webcam_pipeline_instance
+
+
+# Active webcam session state (only one session allowed at a time)
+_webcam_session: Dict[str, Any] = {
+    "active": False,
+    "session_id": None,
+    "video_id": None,
+    "frame_idx": 0,
+    "start_time": 0.0,
+    "fps": 25.0,
+    "incident_detector": None,
+    "total_detections": 0,
+    "total_behaviour_preds": 0,
+    "total_emotion_preds": 0,
+    "all_track_ids": set(),
+    "person_telemetry_history": {},
+    "latest_frame_bytes": b"",
+}
 
 
 # FastAPI Application
@@ -538,6 +576,18 @@ def analyze_video(
     # Sort persons by track ID
     per_person_summary.sort(key=lambda x: x["track_id"])
 
+    # Compute risk contribution ratios based on behaviour confidence scores
+    total_conf = sum(
+        p["latest_behaviour"]["confidence"]
+        for p in per_person_summary
+        if p["latest_behaviour"]["confidence"] >= 0
+    )
+    for p in per_person_summary:
+        if total_conf > 0:
+            p["risk_contribution_ratio"] = round(p["latest_behaviour"]["confidence"] / total_conf * 100, 1)
+        else:
+            p["risk_contribution_ratio"] = "Insufficient evidence"
+
     recorded_inc_ids = raw_res.get("recorded_incidents", [])
 
     # Update session completion in database
@@ -881,6 +931,308 @@ def apply_retention(retention_days: int = Query(30, ge=1, le=365)):
         "success": True,
         "retention_days": retention_days,
         "deleted_count": deleted_count,
+    }
+
+
+# ==============================================================================
+# Live Webcam Analysis Endpoints
+# ==============================================================================
+
+class WebcamFrameRequest(BaseModel):
+    image: str = Field(..., description="Base64-encoded JPEG/PNG frame from browser camera")
+
+
+@app.post("/api/webcam/start")
+def webcam_start():
+    """
+    Starts a live webcam analysis session.
+    Resets the dedicated webcam pipeline and incident detector state.
+    Only one webcam session can be active at a time.
+    """
+    global _webcam_session
+    if _webcam_session["active"]:
+        return {
+            "success": True,
+            "message": "Webcam session already active.",
+            "session_id": _webcam_session["session_id"],
+            "video_id": _webcam_session["video_id"],
+        }
+
+    video_id = f"webcam_{uuid.uuid4().hex[:8]}"
+    session_id = f"ses_cam_{uuid.uuid4().hex[:8]}"
+
+    # Initialize dedicated webcam pipeline (thread-safe)
+    with _webcam_pipeline_lock:
+        pipeline = get_webcam_pipeline()
+        pipeline.reset_all()
+
+    # Create a dedicated incident detector for this webcam session
+    cam_incident_detector = IncidentDetector(db=incident_db, evidence_dir=EVIDENCE_DIR)
+    cam_incident_detector.reset_session(session_id=session_id)
+
+    _webcam_session.update({
+        "active": True,
+        "session_id": session_id,
+        "video_id": video_id,
+        "frame_idx": 0,
+        "start_time": time.time(),
+        "fps": 25.0,
+        "incident_detector": cam_incident_detector,
+        "total_detections": 0,
+        "total_behaviour_preds": 0,
+        "total_emotion_preds": 0,
+        "all_track_ids": set(),
+        "person_telemetry_history": {},
+    })
+
+    # Register session in database
+    try:
+        incident_db.create_session({
+            "id": session_id,
+            "video_id": video_id,
+            "source_filename": "Live Webcam",
+            "total_frames": 0,
+            "fps": 25.0,
+            "status": "processing",
+            "created_at": time.time(),
+        })
+    except Exception as e:
+        print(f"[API] Warning initializing webcam session {session_id}: {e}")
+
+    print(f"[API] Webcam session started: {session_id} (video_id={video_id})")
+    return {
+        "success": True,
+        "message": "Webcam session started.",
+        "session_id": session_id,
+        "video_id": video_id,
+    }
+
+
+@app.post("/api/webcam/frame")
+def webcam_process_frame(body: WebcamFrameRequest):
+    """
+    Processes a single webcam frame through the dedicated pipeline.
+    Expects a base64-encoded JPEG/PNG image.
+    Returns annotated frame (base64 JPEG) and detection/behaviour telemetry.
+    Maintains pipeline/tracking state across frames (no reset between frames).
+    """
+    global _webcam_session
+
+    if not _webcam_session["active"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active webcam session. Call /api/webcam/start first.",
+        )
+
+    # Decode base64 image
+    try:
+        img_data = body.image
+        # Strip data URL prefix if present (e.g., "data:image/jpeg;base64,...")
+        if "," in img_data:
+            img_data = img_data.split(",", 1)[1]
+        img_bytes = base64.b64decode(img_data)
+        np_arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to decode frame image: {e}",
+        )
+
+    if frame is None or frame.size == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Decoded frame is empty or invalid.",
+        )
+
+    _webcam_session["frame_idx"] += 1
+    frame_idx = _webcam_session["frame_idx"]
+    session_id = _webcam_session["session_id"]
+    video_id = _webcam_session["video_id"]
+    elapsed = time.time() - _webcam_session["start_time"]
+    cam_fps = round(frame_idx / elapsed, 1) if elapsed > 0 else 0.0
+
+    # Process frame through dedicated webcam pipeline (with lock for thread safety)
+    with _webcam_pipeline_lock:
+        pipeline = get_webcam_pipeline()
+        try:
+            annotated_frame, records, faces = pipeline.process_frame(
+                frame, frame_idx=frame_idx, total_frames=0, fps=cam_fps,
+            )
+        except Exception as e:
+            print(f"[API] Webcam pipeline error on frame {frame_idx}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Pipeline processing error: {e}",
+            )
+
+    # Feed records to incident detector
+    cam_det = _webcam_session["incident_detector"]
+    new_incidents = []
+    if cam_det is not None:
+        try:
+            new_incidents = cam_det.process_frame(
+                frame_idx=frame_idx,
+                timestamp_sec=round(elapsed, 3),
+                annotated_frame=annotated_frame,
+                integrated_records=records,
+                video_id=video_id,
+                source_filename="Live Webcam",
+            )
+        except Exception as e:
+            print(f"[API] Webcam incident detector warning on frame {frame_idx}: {e}")
+
+    # Accumulate telemetry
+    for r in records:
+        tid = r["track_id"]
+        if tid > 0:
+            _webcam_session["all_track_ids"].add(tid)
+        beh = r.get("behaviour", {})
+        emo = r.get("emotion", {})
+        if beh.get("status") == "predicted":
+            _webcam_session["total_behaviour_preds"] += 1
+        if emo.get("status") == "available":
+            _webcam_session["total_emotion_preds"] += 1
+
+    _webcam_session["total_detections"] += len(records)
+
+    # Encode annotated frame to base64 JPEG for frontend display and store raw bytes for MJPEG stream
+    try:
+        _, jpeg_buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        annotated_b64 = base64.b64encode(jpeg_buf.tobytes()).decode("ascii")
+        # Save raw JPEG bytes for MJPEG streaming endpoint
+        _webcam_session["latest_frame_bytes"] = jpeg_buf.tobytes()
+    except Exception:
+        annotated_b64 = ""
+        _webcam_session["latest_frame_bytes"] = b""
+    # Build per-person summary for this frame
+    people_in_frame = []
+    for r in records:
+        beh = r.get("behaviour", {})
+        emo = r.get("emotion", {})
+        people_in_frame.append({
+            "track_id": r["track_id"],
+            "bbox": r.get("person_bbox", []),
+            "det_confidence": round(r.get("det_confidence", 0.0), 3),
+            "behaviour": {
+                "status": beh.get("status", "unknown"),
+                "class_name": beh.get("class_name", "Unknown"),
+                "confidence": round(beh.get("confidence", 0.0), 3),
+                "risk_level": beh.get("risk_level", "—"),
+                "collected": beh.get("collected", 0),
+            },
+            "emotion": {
+                "status": emo.get("status", "unavailable"),
+                "label": emo.get("label", "Unavailable"),
+                "confidence": round(emo.get("confidence", 0.0), 3),
+            },
+        })
+
+    return {
+        "success": True,
+        "frame_idx": frame_idx,
+        "elapsed_sec": round(elapsed, 2),
+        "processing_fps": cam_fps,
+        "annotated_frame": annotated_b64,
+        "people_count": len(records),
+        "people": people_in_frame,
+        "persistent_tracks": len(_webcam_session["all_track_ids"]),
+        "total_behaviour_preds": _webcam_session["total_behaviour_preds"],
+        "total_emotion_preds": _webcam_session["total_emotion_preds"],
+        "new_incidents": new_incidents,
+        "total_incidents": len(cam_det.session_incidents) if cam_det else 0,
+    }
+
+
+@app.post("/api/webcam/stop")
+def webcam_stop():
+    """
+    Stops the active webcam session, finalizes the session in the database,
+    and resets the dedicated webcam pipeline state.
+    """
+    global _webcam_session
+
+    if not _webcam_session["active"]:
+        return {
+            "success": True,
+            "message": "No active webcam session to stop.",
+        }
+
+    session_id = _webcam_session["session_id"]
+    video_id = _webcam_session["video_id"]
+    total_frames = _webcam_session["frame_idx"]
+    elapsed = time.time() - _webcam_session["start_time"]
+    cam_det = _webcam_session["incident_detector"]
+    incident_count = len(cam_det.session_incidents) if cam_det else 0
+
+    # Finalize session in database
+    try:
+        incident_db.update_session(
+            session_id=session_id,
+            status="completed",
+            completed_at=time.time(),
+            metrics={
+                "total_frames_processed": total_frames,
+                "persistent_tracks_count": len(_webcam_session["all_track_ids"]),
+                "recorded_incidents_count": incident_count,
+                "processing_fps": round(total_frames / elapsed, 2) if elapsed > 0 else 0.0,
+                "source": "webcam",
+            },
+        )
+    except Exception as e:
+        print(f"[API] Warning finalizing webcam session {session_id}: {e}")
+
+    # Reset webcam pipeline state
+    with _webcam_pipeline_lock:
+        pipeline = get_webcam_pipeline()
+        pipeline.reset_all()
+
+    # Clear session state
+    _webcam_session.update({
+        "active": False,
+        "session_id": None,
+        "video_id": None,
+        "frame_idx": 0,
+        "start_time": 0.0,
+        "fps": 25.0,
+        "incident_detector": None,
+        "total_detections": 0,
+        "total_behaviour_preds": 0,
+        "total_emotion_preds": 0,
+        "all_track_ids": set(),
+        "person_telemetry_history": {},
+    })
+
+    print(f"[API] Webcam session stopped: {session_id} ({total_frames} frames, {incident_count} incidents)")
+    return {
+        "success": True,
+        "message": "Webcam session stopped and finalized.",
+        "session_id": session_id,
+        "video_id": video_id,
+        "total_frames_processed": total_frames,
+        "elapsed_seconds": round(elapsed, 2),
+        "recorded_incidents_count": incident_count,
+    }
+
+
+@app.get("/api/webcam/status")
+def webcam_status():
+    """Returns the current webcam session status."""
+    if not _webcam_session["active"]:
+        return {"active": False}
+
+    elapsed = time.time() - _webcam_session["start_time"]
+    cam_det = _webcam_session["incident_detector"]
+    return {
+        "active": True,
+        "session_id": _webcam_session["session_id"],
+        "video_id": _webcam_session["video_id"],
+        "frame_idx": _webcam_session["frame_idx"],
+        "elapsed_sec": round(elapsed, 2),
+        "persistent_tracks": len(_webcam_session["all_track_ids"]),
+        "total_behaviour_preds": _webcam_session["total_behaviour_preds"],
+        "total_emotion_preds": _webcam_session["total_emotion_preds"],
+        "total_incidents": len(cam_det.session_incidents) if cam_det else 0,
     }
 
 

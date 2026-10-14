@@ -1210,4 +1210,307 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Incident log refreshed.", "success");
     });
   }
+
+  // ==========================================================================
+  // 11. Live Camera Analysis
+  // ==========================================================================
+  const btnStartCamera = document.getElementById("btnStartCamera");
+  const btnStopCamera = document.getElementById("btnStopCamera");
+  const camVideoStream = document.getElementById("camVideoStream");
+  const camCaptureCanvas = document.getElementById("camCaptureCanvas");
+  const camAnnotatedDisplay = document.getElementById("camAnnotatedDisplay");
+  const camPlaceholder = document.getElementById("camPlaceholder");
+  const camStatusBar = document.getElementById("camStatusBar");
+  const camStatusText = document.getElementById("camStatusText");
+  const camErrorBanner = document.getElementById("camErrorBanner");
+  const camErrorMessage = document.getElementById("camErrorMessage");
+  const camLiveBadge = document.getElementById("camLiveBadge");
+  const camTelemetryBar = document.getElementById("camTelemetryBar");
+  const camFrameIdx = document.getElementById("camFrameIdx");
+  const camPeopleCount = document.getElementById("camPeopleCount");
+  const camTracksCount = document.getElementById("camTracksCount");
+  const camFps = document.getElementById("camFps");
+  const camIncidents = document.getElementById("camIncidents");
+  const camPeopleList = document.getElementById("camPeopleList");
+
+  let camActive = false;
+  let camStream = null;
+  let camSessionId = null;
+  let camVideoId = null;
+  let camLoopRunning = false;
+  let camFrameInFlight = false;  // prevent overlapping frame requests
+
+  if (btnStartCamera) {
+    btnStartCamera.addEventListener("click", startCamera);
+  }
+  if (btnStopCamera) {
+    btnStopCamera.addEventListener("click", stopCamera);
+  }
+
+  async function startCamera() {
+    if (camActive) return;
+    clearCamError();
+
+    // Request camera permission
+    camStatusBar.style.display = "block";
+    camStatusText.textContent = "Requesting camera access...";
+
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false,
+      });
+    } catch (err) {
+      let msg = "Camera access denied.";
+      if (err.name === "NotAllowedError") {
+        msg = "Camera permission denied. Please allow camera access in your browser settings.";
+      } else if (err.name === "NotFoundError") {
+        msg = "No camera device found. Please connect a webcam.";
+      } else if (err.name === "NotReadableError") {
+        msg = "Camera is in use by another application.";
+      } else {
+        msg = `Camera error: ${err.message || err.name}`;
+      }
+      showCamError(msg);
+      camStatusBar.style.display = "none";
+      return;
+    }
+
+    camVideoStream.srcObject = camStream;
+    camVideoStream.style.display = "none"; // keep hidden, we show annotated frame instead
+
+    // Wait for video to be ready
+    await new Promise((resolve) => {
+      camVideoStream.onloadedmetadata = () => resolve();
+    });
+
+    // Start backend session
+    camStatusText.textContent = "Starting analysis session...";
+    try {
+      const res = await fetch("/api/webcam/start", { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to start webcam session.");
+      }
+      const data = await res.json();
+      camSessionId = data.session_id;
+      camVideoId = data.video_id;
+    } catch (err) {
+      showCamError(err.message);
+      stopCamStream();
+      camStatusBar.style.display = "none";
+      return;
+    }
+
+    // Activate UI
+    camActive = true;
+    camLoopRunning = true;
+    camFrameInFlight = false;
+    btnStartCamera.disabled = true;
+    btnStopCamera.disabled = false;
+    btnStopCamera.style.opacity = "1";
+    camPlaceholder.style.display = "none";
+    camAnnotatedDisplay.style.display = "block";
+    camLiveBadge.style.display = "inline-block";
+    camTelemetryBar.style.display = "block";
+    camPeopleList.style.display = "block";
+    camStatusText.textContent = "Live analysis active — processing frames...";
+
+    // Start frame capture loop
+    requestAnimationFrame(camCaptureLoop);
+  }
+
+  function camCaptureLoop() {
+    if (!camLoopRunning || !camActive) return;
+
+    // Skip if a frame request is still in-flight (throttle to pipeline speed)
+    if (!camFrameInFlight) {
+      captureAndSendFrame();
+    }
+
+    // Target ~4-5 FPS to avoid overwhelming the pipeline
+    setTimeout(() => {
+      if (camLoopRunning) requestAnimationFrame(camCaptureLoop);
+    }, 220);
+  }
+
+  async function captureAndSendFrame() {
+    if (!camActive || !camStream) return;
+
+    // Check if camera tracks are still active (handle disconnection)
+    const tracks = camStream.getVideoTracks();
+    if (!tracks || tracks.length === 0 || tracks[0].readyState !== "live") {
+      showCamError("Camera disconnected. Please reconnect and restart.");
+      stopCamera();
+      return;
+    }
+
+    const vw = camVideoStream.videoWidth;
+    const vh = camVideoStream.videoHeight;
+    if (vw === 0 || vh === 0) return;
+
+    // Capture frame to canvas
+    camCaptureCanvas.width = vw;
+    camCaptureCanvas.height = vh;
+    const ctx = camCaptureCanvas.getContext("2d");
+    ctx.drawImage(camVideoStream, 0, 0, vw, vh);
+
+    // Convert to JPEG base64
+    const dataUrl = camCaptureCanvas.toDataURL("image/jpeg", 0.75);
+
+    camFrameInFlight = true;
+    try {
+      const res = await fetch("/api/webcam/frame", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("[Camera] Frame processing error:", err.detail || res.statusText);
+        camFrameInFlight = false;
+        return;
+      }
+
+      const data = await res.json();
+
+      // Update annotated display
+      if (data.annotated_frame) {
+        camAnnotatedDisplay.src = "data:image/jpeg;base64," + data.annotated_frame;
+        camAnnotatedDisplay.style.display = "block";
+      }
+
+      // Update telemetry bar
+      if (camFrameIdx) camFrameIdx.textContent = data.frame_idx || 0;
+      if (camPeopleCount) camPeopleCount.textContent = data.people_count || 0;
+      if (camTracksCount) camTracksCount.textContent = data.persistent_tracks || 0;
+      if (camFps) camFps.textContent = data.processing_fps || 0;
+      if (camIncidents) camIncidents.textContent = data.total_incidents || 0;
+
+      // Update status text
+      camStatusText.textContent = `Frame ${data.frame_idx} | ${data.people_count} people | ${data.processing_fps} FPS | ${data.elapsed_sec}s elapsed`;
+
+      // Render per-person detection cards
+      renderCamPeople(data.people || []);
+
+      // If new incidents detected, show toast and refresh incident table
+      if (data.new_incidents && data.new_incidents.length > 0) {
+        showToast(`Live camera: ${data.new_incidents.length} new high-risk incident(s) detected for review.`, "success");
+        fetchIncidents();
+        fetchIncidentStats();
+      }
+    } catch (err) {
+      console.warn("[Camera] Network error sending frame:", err);
+    } finally {
+      camFrameInFlight = false;
+    }
+  }
+
+  function renderCamPeople(people) {
+    if (!camPeopleList) return;
+    if (!people || people.length === 0) {
+      camPeopleList.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);padding:6px;">No people detected in current frame.</div>';
+      return;
+    }
+
+    let html = "";
+    people.forEach(p => {
+      const beh = p.behaviour || {};
+      const emo = p.emotion || {};
+
+      // Behaviour display
+      let bClass = "tag-collecting";
+      let bText = beh.class_name || "Unknown";
+      if (beh.status === "predicted") {
+        const risk = (beh.risk_level || "").toLowerCase();
+        if (risk === "high" || bText.toLowerCase().includes("fight") || bText.toLowerCase().includes("fall")) {
+          bClass = "tag-fight";
+        } else {
+          bClass = "tag-normal";
+        }
+        bText += ` (${(beh.confidence * 100).toFixed(0)}%)`;
+      } else if (beh.status === "collecting") {
+        bText = `Collecting ${beh.collected || 0}/30`;
+        bClass = "tag-collecting";
+      } else {
+        bText = "Pose Unavailable";
+      }
+
+      // Emotion display
+      let eText = "Unavailable";
+      let eClass = "tag-unavailable";
+      if (emo.status === "available") {
+        eText = `${emo.label} (${(emo.confidence * 100).toFixed(0)}%)`;
+        eClass = "tag-" + (emo.label || "").toLowerCase();
+      }
+
+      html += `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--border-subtle);font-size:0.75rem;">
+          <span style="font-weight:600;color:var(--text-primary);min-width:60px;">ID ${p.track_id}</span>
+          <span class="prediction-tag ${bClass}" style="font-size:0.72rem;">● Body: ${bText}</span>
+          <span class="prediction-tag ${eClass}" style="font-size:0.72rem;">● Face: ${eText}</span>
+        </div>
+      `;
+    });
+    camPeopleList.innerHTML = html;
+  }
+
+  async function stopCamera() {
+    camLoopRunning = false;
+    camActive = false;
+
+    // Stop backend session
+    if (camSessionId) {
+      try {
+        const res = await fetch("/api/webcam/stop", { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          showToast(`Webcam session ended: ${data.total_frames_processed} frames processed, ${data.recorded_incidents_count} incidents.`, "success");
+          // Refresh incidents to include webcam session incidents
+          fetchIncidents();
+          fetchIncidentStats();
+        }
+      } catch (err) {
+        console.warn("[Camera] Error stopping session:", err);
+      }
+    }
+
+    stopCamStream();
+
+    // Reset UI
+    btnStartCamera.disabled = false;
+    btnStopCamera.disabled = true;
+    btnStopCamera.style.opacity = "0.6";
+    camAnnotatedDisplay.style.display = "none";
+    camPlaceholder.style.display = "flex";
+    camLiveBadge.style.display = "none";
+    camTelemetryBar.style.display = "none";
+    camPeopleList.style.display = "none";
+    camPeopleList.innerHTML = "";
+    camStatusBar.style.display = "none";
+    camSessionId = null;
+    camVideoId = null;
+  }
+
+  function stopCamStream() {
+    if (camStream) {
+      camStream.getTracks().forEach(track => track.stop());
+      camStream = null;
+    }
+    if (camVideoStream) {
+      camVideoStream.srcObject = null;
+    }
+  }
+
+  function showCamError(msg) {
+    if (camErrorBanner) camErrorBanner.style.display = "block";
+    if (camErrorMessage) camErrorMessage.textContent = msg;
+  }
+
+  function clearCamError() {
+    if (camErrorBanner) camErrorBanner.style.display = "none";
+    if (camErrorMessage) camErrorMessage.textContent = "";
+  }
+
 });

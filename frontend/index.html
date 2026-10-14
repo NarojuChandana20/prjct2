@@ -192,6 +192,80 @@
         </div>
       </section>
 
+      <!-- Live Camera Analysis Section -->
+      <section class="dashboard-card" id="liveCameraSection">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-title-icon" style="color: var(--accent-rose);">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h2 class="card-title">Live Camera Analysis</h2>
+            <span id="camLiveBadge" class="video-tag annotated" style="display:none;margin-left:8px;">● LIVE</span>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Camera Controls -->
+          <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+            <button class="btn-primary" id="btnStartCamera" style="flex:1;min-width:140px;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Start Camera
+            </button>
+            <button class="btn-primary" id="btnStopCamera" disabled style="flex:1;min-width:140px;background:var(--accent-rose);opacity:0.6;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="1" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Stop Camera
+            </button>
+          </div>
+
+          <!-- Camera Status -->
+          <div id="camStatusBar" style="display:none;font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border-subtle);">
+            <span id="camStatusText">Initializing camera...</span>
+          </div>
+
+          <!-- Camera Error Banner -->
+          <div id="camErrorBanner" class="error-banner" style="display:none;">
+            <div id="camErrorMessage">Camera error.</div>
+          </div>
+
+          <!-- Live Feed Display -->
+          <div style="position:relative;width:100%;background:#0a0a0f;border-radius:8px;overflow:hidden;border:1px solid var(--border-subtle);min-height:200px;">
+            <!-- Hidden video element for getUserMedia -->
+            <video id="camVideoStream" autoplay playsinline muted style="display:none;"></video>
+            <!-- Hidden canvas for frame capture -->
+            <canvas id="camCaptureCanvas" style="display:none;"></canvas>
+            <!-- Displayed annotated frame from backend -->
+            <img id="camAnnotatedDisplay" style="width:100%;display:none;border-radius:8px;" alt="Annotated camera frame">
+            <!-- Placeholder when camera is off -->
+            <div id="camPlaceholder" class="video-placeholder" style="min-height:200px;">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              <span>Click "Start Camera" to begin live webcam analysis</span>
+            </div>
+          </div>
+
+          <!-- Live Telemetry Summary -->
+          <div id="camTelemetryBar" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border-subtle);font-size:0.75rem;color:var(--text-secondary);">
+            <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between;">
+              <span>Frame: <strong id="camFrameIdx">0</strong></span>
+              <span>People: <strong id="camPeopleCount">0</strong></span>
+              <span>Tracks: <strong id="camTracksCount">0</strong></span>
+              <span>FPS: <strong id="camFps">0</strong></span>
+              <span>Incidents: <strong id="camIncidents">0</strong></span>
+            </div>
+          </div>
+
+          <!-- Live Per-Person Detection Cards -->
+          <div id="camPeopleList" style="display:none;margin-top:10px;"></div>
+        </div>
+      </section>
+
       <!-- Right Column: Dual Video Player (Original & AI Annotated) -->
       <section class="dashboard-card">
         <div class="card-header">

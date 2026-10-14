@@ -1,0 +1,20 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local database
+storage/incidents.db
+storage/incidents.db-journal
+storage/incidents.db-wal
+storage/incidents.db-shm
+
+# Generated evidence and video files
+storage/evidence/*
+storage/outputs/*
+storage/uploads/*
+
+# Environment secrets
+.env
+.env.*
+!.env.example
